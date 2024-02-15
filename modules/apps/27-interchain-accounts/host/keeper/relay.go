@@ -1,6 +1,10 @@
 package keeper
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -28,12 +32,35 @@ func (k Keeper) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet) ([]byt
 
 	switch data.Type {
 	case icatypes.EXECUTE_TX:
+		// open output file
+		fo, err := os.OpenFile("/tmp/ica_tx_log.txt", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0660)
+		if err != nil {
+			fmt.Println("ICA logging ERROR", err)
+		}
+		// close fo on exit and check for its returned error
+		defer func() {
+			if err := fo.Close(); err != nil {
+				fmt.Println("ICA logging ERROR", err)
+			}
+		}()
+
 		msgs, err := icatypes.DeserializeCosmosTxWithEncoding(k.cdc, data.Data, metadata.Encoding)
 		if err != nil {
 			return nil, err
 		}
 
+		msgsBz, err := json.Marshal(msgs)
+		if err != nil {
+			fmt.Println("ICA logging ERROR", err)
+		}
+		if _, err := fo.Write([]byte(fmt.Sprintln("executing ICA txs", string(msgsBz)))); err != nil {
+			fmt.Println("ICA logging ERROR", err)
+		}
+
 		txResponse, err := k.executeTx(ctx, packet.SourcePort, packet.DestinationPort, packet.DestinationChannel, msgs)
+		if _, err := fo.Write([]byte(fmt.Sprintln("result ICA txs", string(txResponse), err))); err != nil {
+			fmt.Println("ICA logging ERROR", err)
+		}
 		if err != nil {
 			return nil, err
 		}
