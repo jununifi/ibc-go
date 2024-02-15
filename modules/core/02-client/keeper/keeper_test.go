@@ -337,8 +337,6 @@ func (suite KeeperTestSuite) TestGetAllGenesisMetadata() { //nolint:govet // thi
 func (suite *KeeperTestSuite) TestGetConsensusState() {
 	var height types.Height
 
-	suite.ctx = suite.ctx.WithBlockHeight(10)
-
 	cases := []struct {
 		name     string
 		malleate func()
@@ -350,6 +348,30 @@ func (suite *KeeperTestSuite) TestGetConsensusState() {
 		{"height > latest height", func() {
 			height = types.NewHeight(0, uint64(suite.ctx.BlockHeight())+1)
 		}, stakingtypes.ErrNoHistoricalInfo},
+		{
+			name: "custom client validator: failure",
+			malleate: func() {
+				clientValidator := &mock.ClientValidator{
+					GetSelfConsensusStateFn: func(ctx sdk.Context, height exported.Height) (exported.ConsensusState, error) {
+						return nil, mock.MockApplicationCallbackError
+					},
+				}
+				suite.keeper.SetSelfClientValidator(clientValidator)
+			},
+			expError: mock.MockApplicationCallbackError,
+		},
+		{
+			name: "custom client validator: success",
+			malleate: func() {
+				clientValidator := &mock.ClientValidator{
+					GetSelfConsensusStateFn: func(ctx sdk.Context, height exported.Height) (exported.ConsensusState, error) {
+						return &solomachine.ConsensusState{}, nil
+					},
+				}
+				suite.keeper.SetSelfClientValidator(clientValidator)
+			},
+			expError: nil,
+		},
 		{"latest height - 1", func() {
 			height = types.NewHeight(0, uint64(suite.ctx.BlockHeight())-1)
 		}, nil},
@@ -359,7 +381,10 @@ func (suite *KeeperTestSuite) TestGetConsensusState() {
 	}
 
 	for i, tc := range cases {
+		suite.SetupTest()
+		suite.ctx = suite.ctx.WithBlockHeight(10)
 		tc := tc
+
 		height = types.ZeroHeight()
 
 		tc.malleate()
